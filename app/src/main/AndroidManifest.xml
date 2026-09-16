@@ -4,6 +4,9 @@
         <intent>
             <action android:name="android.provider.AlarmClock.ACTION_SET_ALARM" />
         </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
     </queries>
 
     <application
