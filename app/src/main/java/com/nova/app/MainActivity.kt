@@ -1,6 +1,7 @@
 package com.nova.app
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,7 +34,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- Local notes storage: plain SharedPreferences, on-device only, never leaves the phone ---
 object NoteStorage {
     private const val PREFS = "nova_notes"
     private const val KEY = "notes_list"
@@ -58,10 +58,45 @@ object NoteStorage {
     }
 }
 
-// Deterministic, fully offline responder. No cloud calls, no ML model.
+// Uses Android's built-in Clock app via intent. No special permission, no background service,
+// and the system Clock app shows its own confirmation before the alarm is actually set.
+fun tryHandleAlarm(context: Context, lower: String): String? {
+    if (!lower.startsWith("set alarm for") && !lower.startsWith("alarm for")) return null
+
+    val timePart = lower.substringAfter("for").trim()
+    val (hour, minute) = parseTimeOfDay(timePart) ?: return "I couldn't understand that time. Try: set alarm for 7:30 am"
+
+    val intent = Intent(android.provider.AlarmClock.ACTION_SET_ALARM).apply {
+        putExtra(android.provider.AlarmClock.EXTRA_HOUR, hour)
+        putExtra(android.provider.AlarmClock.EXTRA_MINUTES, minute)
+        putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "Nova alarm")
+    }
+    return try {
+        context.startActivity(intent)
+        "Opening Clock to set an alarm for %02d:%02d — confirm it there.".format(hour, minute)
+    } catch (e: Exception) {
+        "I couldn't open the Clock app on this device."
+    }
+}
+
+// Parses "7:30 am", "7 am", "19:45", "7:30pm"
+fun parseTimeOfDay(text: String): Pair<Int, Int>? {
+    val regex = Regex("""(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""")
+    val match = regex.find(text) ?: return null
+    var hour = match.groupValues[1].toIntOrNull() ?: return null
+    val minute = match.groupValues[2].toIntOrNull() ?: 0
+    val suffix = match.groupValues[3]
+    if (suffix == "pm" && hour != 12) hour += 12
+    if (suffix == "am" && hour == 12) hour = 0
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour to minute
+}
+
 fun localRespond(context: Context, input: String): String {
     val trimmed = input.trim()
     val lower = trimmed.lowercase()
+
+    tryHandleAlarm(context, lower)?.let { return it }
 
     if (lower.startsWith("note:")) {
         val note = trimmed.substringAfter(":").trim()
@@ -79,7 +114,6 @@ fun localRespond(context: Context, input: String): String {
         return "All notes deleted."
     }
 
-    // Calculator: only digits, spaces, + - * / ( )
     if (trimmed.isNotEmpty() && trimmed.all { it.isDigit() || it in "+-*/(). " } && trimmed.any { it.isDigit() }) {
         val result = evalSimpleMath(trimmed)
         if (result != null) return "= $result"
@@ -103,7 +137,7 @@ fun localRespond(context: Context, input: String): String {
     }
 
     return "I'm running fully offline in Private Mode. I can do calculations, unit conversions, " +
-            "date/time, and notes (note: ..., show notes, delete notes)."
+            "date/time, notes, and alarms (set alarm for 7:30 am)."
 }
 
 fun evalSimpleMath(expr: String): Double? {
@@ -184,7 +218,7 @@ fun ChatScreen() {
                 title = { Text("Nova") },
                 actions = {
                     AssistChip(
-                        onClick = { /* Private is default; Online Mode arrives in a later phase */ },
+                        onClick = { },
                         label = { Text(if (mode == PrivacyMode.PRIVATE) "Private mode" else "Online mode") }
                     )
                 }
