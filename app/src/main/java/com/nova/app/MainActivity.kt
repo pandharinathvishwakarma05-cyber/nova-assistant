@@ -1,4 +1,4 @@
-Enter file contents herepackage com.nova.app
+package com.nova.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
