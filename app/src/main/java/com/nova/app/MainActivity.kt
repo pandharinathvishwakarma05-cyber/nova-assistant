@@ -1,5 +1,6 @@
 package com.nova.app
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -31,10 +33,51 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// --- Local notes storage: plain SharedPreferences, on-device only, never leaves the phone ---
+object NoteStorage {
+    private const val PREFS = "nova_notes"
+    private const val KEY = "notes_list"
+    private const val DELIM = "|||NOTE|||"
+
+    fun add(context: Context, note: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val existing = prefs.getString(KEY, "") ?: ""
+        val updated = if (existing.isEmpty()) note else existing + DELIM + note
+        prefs.edit().putString(KEY, updated).apply()
+    }
+
+    fun getAll(context: Context): List<String> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val existing = prefs.getString(KEY, "") ?: ""
+        return if (existing.isEmpty()) emptyList() else existing.split(DELIM)
+    }
+
+    fun clearAll(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY).apply()
+    }
+}
+
 // Deterministic, fully offline responder. No cloud calls, no ML model.
-fun localRespond(input: String): String {
+fun localRespond(context: Context, input: String): String {
     val trimmed = input.trim()
     val lower = trimmed.lowercase()
+
+    if (lower.startsWith("note:")) {
+        val note = trimmed.substringAfter(":").trim()
+        if (note.isEmpty()) return "Tell me what to note, like: note: buy milk"
+        NoteStorage.add(context, note)
+        return "Saved: \"$note\""
+    }
+    if (lower == "show notes" || lower == "list notes") {
+        val notes = NoteStorage.getAll(context)
+        if (notes.isEmpty()) return "You don't have any notes yet. Try: note: buy milk"
+        return notes.mapIndexed { i, n -> "${i + 1}. $n" }.joinToString("\n")
+    }
+    if (lower == "delete notes" || lower == "clear notes") {
+        NoteStorage.clearAll(context)
+        return "All notes deleted."
+    }
 
     // Calculator: only digits, spaces, + - * / ( )
     if (trimmed.isNotEmpty() && trimmed.all { it.isDigit() || it in "+-*/(). " } && trimmed.any { it.isDigit() }) {
@@ -60,15 +103,12 @@ fun localRespond(input: String): String {
     }
 
     return "I'm running fully offline in Private Mode. I can do calculations, unit conversions, " +
-            "and date/time. Ask me something like \"12*7\" or \"convert 5 km to miles\"."
+            "date/time, and notes (note: ..., show notes, delete notes)."
 }
 
-// Minimal safe expression evaluator: + - * / and parentheses only, no external library.
 fun evalSimpleMath(expr: String): Double? {
     return try {
-        val tokens = expr.replace(" ", "")
-        val result = Parser(tokens).parse()
-        result
+        Parser(expr.replace(" ", "")).parse()
     } catch (e: Exception) {
         null
     }
@@ -133,6 +173,7 @@ fun tryConvertUnits(lower: String): String? {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen() {
+    val context = LocalContext.current
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var input by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(PrivacyMode.PRIVATE) }
@@ -177,7 +218,7 @@ fun ChatScreen() {
                 Button(onClick = {
                     if (input.isNotBlank()) {
                         messages.add(ChatMessage(input, isUser = true))
-                        messages.add(ChatMessage(localRespond(input), isUser = false))
+                        messages.add(ChatMessage(localRespond(context, input), isUser = false))
                         input = ""
                     }
                 }) { Text("Send") }
