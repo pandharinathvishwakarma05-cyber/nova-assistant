@@ -215,8 +215,7 @@ fun ChatScreen() {
     var mode by remember { mutableStateOf(PrivacyMode.PRIVATE) }
     var voiceError by remember { mutableStateOf<String?>(null) }
     var showOnlineDisclosure by remember { mutableStateOf(false) }
-
-    val speechLauncher = rememberLauncherForActivityResult(
+val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -224,10 +223,12 @@ fun ChatScreen() {
                 ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 ?.firstOrNull()
             if (!spoken.isNullOrBlank()) {
-                input = spoken
+                messages.add(ChatMessage(spoken, isUser = true))
+                messages.add(ChatMessage(localRespond(context, spoken), isUser = false))
             }
         }
     }
+    
 
     fun launchVoiceInput() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
