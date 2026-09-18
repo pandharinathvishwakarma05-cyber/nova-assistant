@@ -1,10 +1,14 @@
 package com.nova.app
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 enum class PrivacyMode { PRIVATE, ONLINE }
 
@@ -58,8 +63,6 @@ object NoteStorage {
     }
 }
 
-// Uses Android's built-in Clock app via intent. No special permission, no background service,
-// and the system Clock app shows its own confirmation before the alarm is actually set.
 fun tryHandleAlarm(context: Context, lower: String): String? {
     if (!lower.startsWith("set alarm for") && !lower.startsWith("alarm for")) return null
 
@@ -79,7 +82,6 @@ fun tryHandleAlarm(context: Context, lower: String): String? {
     }
 }
 
-// Parses "7:30 am", "7 am", "19:45", "7:30pm"
 fun parseTimeOfDay(text: String): Pair<Int, Int>? {
     val regex = Regex("""(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""")
     val match = regex.find(text) ?: return null
@@ -211,6 +213,33 @@ fun ChatScreen() {
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var input by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(PrivacyMode.PRIVATE) }
+    var voiceError by remember { mutableStateOf<String?>(null) }
+
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                input = spoken
+            }
+        }
+    }
+
+    fun launchVoiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Nova")
+        }
+        try {
+            speechLauncher.launch(intent)
+        } catch (e: Exception) {
+            voiceError = "No speech recognizer app is available on this device."
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -237,6 +266,11 @@ fun ChatScreen() {
                         }
                     }
                 }
+                voiceError?.let { err ->
+                    item {
+                        Text(err, Modifier.padding(8.dp))
+                    }
+                }
             }
             Row(
                 Modifier.fillMaxWidth().padding(8.dp),
@@ -248,7 +282,9 @@ fun ChatScreen() {
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Message Nova") }
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
+                Button(onClick = { launchVoiceInput() }) { Text("Mic") }
+                Spacer(Modifier.width(4.dp))
                 Button(onClick = {
                     if (input.isNotBlank()) {
                         messages.add(ChatMessage(input, isUser = true))
