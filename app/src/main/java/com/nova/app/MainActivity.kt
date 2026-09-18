@@ -215,7 +215,8 @@ fun ChatScreen() {
     var mode by remember { mutableStateOf(PrivacyMode.PRIVATE) }
     var voiceError by remember { mutableStateOf<String?>(null) }
     var showOnlineDisclosure by remember { mutableStateOf(false) }
-val speechLauncher = rememberLauncherForActivityResult(
+
+    val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -228,7 +229,6 @@ val speechLauncher = rememberLauncherForActivityResult(
             }
         }
     }
-    
 
     fun launchVoiceInput() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -273,11 +273,10 @@ val speechLauncher = rememberLauncherForActivityResult(
                 actions = {
                     AssistChip(
                         onClick = {
-                            mode = if (mode == PrivacyMode.PRIVATE) {
+                            if (mode == PrivacyMode.PRIVATE) {
                                 showOnlineDisclosure = true
-                                PrivacyMode.PRIVATE // stays private until confirmed in dialog
                             } else {
-                                PrivacyMode.PRIVATE // tap again to go back to private, no confirmation needed
+                                mode = PrivacyMode.PRIVATE
                             }
                         },
                         label = { Text(if (mode == PrivacyMode.PRIVATE) "Private mode" else "Online mode") }
