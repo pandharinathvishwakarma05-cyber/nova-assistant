@@ -214,6 +214,7 @@ fun ChatScreen() {
     var input by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(PrivacyMode.PRIVATE) }
     var voiceError by remember { mutableStateOf<String?>(null) }
+    var showOnlineDisclosure by remember { mutableStateOf(false) }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -241,13 +242,43 @@ fun ChatScreen() {
         }
     }
 
+    if (showOnlineDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showOnlineDisclosure = false },
+            title = { Text("Switch to Online Mode?") },
+            text = {
+                Text(
+                    "Voice input will send your recorded speech to your phone's default " +
+                    "speech recognition service (typically Google) for processing off-device. " +
+                    "Text chat stays local either way. You can switch back to Private mode anytime."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    mode = PrivacyMode.ONLINE
+                    showOnlineDisclosure = false
+                }) { Text("Switch to Online") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOnlineDisclosure = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Nova") },
                 actions = {
                     AssistChip(
-                        onClick = { },
+                        onClick = {
+                            mode = if (mode == PrivacyMode.PRIVATE) {
+                                showOnlineDisclosure = true
+                                PrivacyMode.PRIVATE // stays private until confirmed in dialog
+                            } else {
+                                PrivacyMode.PRIVATE // tap again to go back to private, no confirmation needed
+                            }
+                        },
                         label = { Text(if (mode == PrivacyMode.PRIVATE) "Private mode" else "Online mode") }
                     )
                 }
@@ -267,9 +298,7 @@ fun ChatScreen() {
                     }
                 }
                 voiceError?.let { err ->
-                    item {
-                        Text(err, Modifier.padding(8.dp))
-                    }
+                    item { Text(err, Modifier.padding(8.dp)) }
                 }
             }
             Row(
@@ -283,7 +312,15 @@ fun ChatScreen() {
                     placeholder = { Text("Message Nova") }
                 )
                 Spacer(Modifier.width(4.dp))
-                Button(onClick = { launchVoiceInput() }) { Text("Mic") }
+                Button(
+                    onClick = {
+                        if (mode == PrivacyMode.ONLINE) {
+                            launchVoiceInput()
+                        } else {
+                            voiceError = "Voice input needs Online Mode. Tap \"Private mode\" above to switch."
+                        }
+                    }
+                ) { Text("Mic") }
                 Spacer(Modifier.width(4.dp))
                 Button(onClick = {
                     if (input.isNotBlank()) {
